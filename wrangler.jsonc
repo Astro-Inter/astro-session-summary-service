@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "astro-session-summary-service",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["0 * * * *"] },
+  "vars": {
+    "ENABLED": "false",
+    "BATCH_SIZE": "5",
+    "APP_ENV": "production",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otlp-gateway-prod-sa-east-1.grafana.net/otlp"
+  },
+  "observability": { "enabled": true }
+}

@@ -9,7 +9,10 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "dev": "node node_modules/wrangler/bin/wrangler.js dev --test-scheduled",
     "build": "node node_modules/wrangler/bin/wrangler.js deploy --dry-run --outdir dist",
-    "deploy": "node node_modules/wrangler/bin/wrangler.js deploy"
+    "deploy": "node node_modules/wrangler/bin/wrangler.js deploy",
+    "configure:local": "node scripts/import-env.mjs",
+    "secrets:upload": "node scripts/upload-secrets.mjs",
+    "check:connections": "node scripts/check-connections.mjs"
   },
   "dependencies": { "mongodb": "6.20.0" },
   "devDependencies": {

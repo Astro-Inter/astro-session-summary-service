@@ -1,0 +1,39 @@
+import { JobError } from "./config.ts";
+
+export type Fetcher = typeof fetch;
+export async function requestJson(url: string, init: RequestInit, code: string,
+  fetcher: Fetcher = fetch, timeout = 20000): Promise<any> {
+  try {
+    // Workers não implementa redirect:error. manual impede reenviar credenciais.
+    const response = await fetcher(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(timeout) });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new JobError(`${code}_http_${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new JobError(`${code}_invalid_response`);
+    let size = 0;
+    const parts: Uint8Array[] = [];
+    try {
+      while (true) {
+        const result = await reader.read();
+        if (result.done) break;
+        size += result.value.length;
+        if (size > 512000) throw new JobError(`${code}_response_too_large`);
+        parts.push(result.value);
+      }
+    } finally { await reader.cancel().catch(() => {}); }
+    const buffer = new Uint8Array(size);
+    let offset = 0;
+    for (const part of parts) { buffer.set(part, offset); offset += part.length; }
+    return JSON.parse(new TextDecoder().decode(buffer));
+  } catch (error) {
+    if (error instanceof JobError) throw error;
+    // Não propagar mensagens HTTP/driver: podem conter URIs, tokens ou conteúdo.
+    throw new JobError(`${code}_unavailable`);
+  }
+}
+
+export function safeCode(error: unknown): string {
+  return error instanceof JobError && /^[a-z0-9_]{1,80}$/.test(error.code) ? error.code : "internal_error";
+}
