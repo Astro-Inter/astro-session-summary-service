@@ -6,7 +6,13 @@ SCRUM-472 (seleção), SCRUM-473 (processamento) e SCRUM-474 (integração na AP
 
 ## Funcionamento
 
-O Cloudflare Cron executa `0 * * * *`: uma vez por hora, no minuto zero, em UTC.
+O `astro-shared-scheduler`, mantido no
+[astro-notification-service](https://github.com/Astro-Inter/astro-notification-service),
+executa `0 * * * *` e chama este Worker pelo Service Binding `SUMMARY`, entrypoint
+`ScheduledJob`, método `run()`: uma vez por hora, no minuto zero, em UTC.
+Este Worker mantém `triggers.crons=[]`; não deve receber uma segunda agenda.
+Essa integração faz parte da SCRUM-557 e compartilha um único Cron Trigger com
+as análises de notificações. O estado `ENABLED=false` permanece preservado.
 Uma sessão normalmente fica elegível entre 24 e 25 horas após a última mensagem;
 fila acumulada, falhas e limites do provedor podem aumentar esse intervalo.
 São selecionadas até cinco sessões por execução (ajustável entre 1 e 10).
@@ -125,7 +131,14 @@ gera novamente. Acrescente um turno e confira que não é resumido antes de outr
    envia somente Mongo, Groq, Mistral, Qdrant e cabeçalho OTLP de `.dev.vars`;
    não envia as credenciais de Firebase, Postgres, R2 ou DeepInfra.
 7. Após validar em homologação, definir `ENABLED=true` em `wrangler.jsonc` e publicar.
-   Não habilite o Cron enquanto a rede e a integração na API não estiverem prontas.
+   A agenda pertence ao disparador compartilhado; não adicione Cron neste Worker.
+   Não habilite o processamento enquanto a rede e a integração na API não estiverem prontas.
+
+O arquivo de entrada de produção é `src/entrypoint.ts`. Ele preserva os handlers
+existentes de `src/worker.ts` e exporta o entrypoint interno `ScheduledJob`.
+`status()` permite consultar a habilitação sem ler sessões; `run()` respeita
+`ENABLED` e aguarda o mesmo processamento já usado pelo handler agendado.
+Nenhum endpoint HTTP de execução foi adicionado.
 
 O workflow `ci.yml` valida PRs sem secrets. `deploy.yml` é manual, somente `main`,
 usa o environment `production` e exige GitHub secrets `CLOUDFLARE_API_TOKEN` e
