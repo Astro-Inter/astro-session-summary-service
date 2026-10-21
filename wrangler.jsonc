@@ -13,5 +13,16 @@
     "APP_ENV": "production",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otlp-gateway-prod-sa-east-1.grafana.net/otlp"
   },
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+      "head_sampling_rate": 1,
+      "persist": false,
+      "destinations": [
+        "astro-grafana-logs"
+      ]
+    }
+  }
 }
