@@ -3,18 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18.0" },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "check": "node node_modules/typescript/bin/tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --test tests/*.test.ts && npm run test:diagnostics",
     "dev": "node node_modules/wrangler/bin/wrangler.js dev --test-scheduled",
     "build": "node node_modules/wrangler/bin/wrangler.js deploy --dry-run --outdir dist",
     "deploy": "node node_modules/wrangler/bin/wrangler.js deploy",
     "configure:local": "node scripts/import-env.mjs",
     "secrets:upload": "node scripts/upload-secrets.mjs",
-    "check:connections": "node scripts/check-connections.mjs"
+    "check:connections": "node scripts/check-connections.mjs",
+    "test:diagnostics": "node --experimental-strip-types --test diagnostics.contract.mjs"
   },
-  "dependencies": { "mongodb": "6.20.0" },
+  "dependencies": {
+    "mongodb": "6.20.0"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261010.1",
     "@types/node": "22.20.3",
