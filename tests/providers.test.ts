@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GroqSummarizer, parseSummary, segments, redact } from "../src/summarizer.ts";
+import { OpenRouterSummarizer, parseSummary, segments, redact } from "../src/summarizer.ts";
 import { QdrantVectors } from "../src/vectors.ts";
 import { otelHeaders, exportTelemetry } from "../src/telemetry.ts";
 import { requestJson } from "../src/http.ts";
@@ -9,7 +9,7 @@ import type { Fetcher } from "../src/http.ts";
 import type { Session } from "../src/repository.ts";
 import worker from "../src/worker.ts";
 
-const env = { GROQ_API_KEY: "one| two |one", MISTRAL_API_KEY: "secret",
+const env = { MONGODB_URI: "mongodb://localhost", MONGODB_DATABASE: "test", OPENROUTER_API_KEY: "secret",
   QDRANT_URL: "https://qdrant.example", QDRANT_API_KEY: "q-secret" } as Env;
 
 test("JSON inválido, vazio, com campos extras e longo é rejeitado", () => {
@@ -19,7 +19,7 @@ test("JSON inválido, vazio, com campos extras e longo é rejeitado", () => {
 });
 
 test("redação remove credenciais óbvias e segmentos preservam todo o texto", () => {
-  assert.equal(redact("senha: segredo"), "senha: [credencial removida]");
+  assert.equal(redact("senha: segredo"), "senha: [SEGREDO_REMOVIDO]");
   assert.ok(!redact("gsk_12345678901234567890").includes("1234567890"));
   const parts = segments([{ role: "human", content: "a".repeat(13000) }]);
   assert.equal(parts.map(p => p.content).join("").length, 13000);
@@ -27,7 +27,7 @@ test("redação remove credenciais óbvias e segmentos preservam todo o texto", 
   assert.throws(() => segments([{ role: "tool", content: "a" }] as any));
 });
 
-test("Groq troca chave somente após 429 e exige término stop", async () => {
+test("OpenRouter repete 429 com a mesma chave e exige termino stop", async () => {
   const keys: string[] = [];
   const fetcher = (async (_url, init) => {
     assert.equal(init!.redirect, "manual");
@@ -36,26 +36,30 @@ test("Groq troca chave somente após 429 e exige término stop", async () => {
     const body = JSON.parse(init!.body as string);
     assert.equal(body.messages[0].role, "system");
     assert.equal(body.response_format.type, "json_object");
+    assert.equal(body.model, "openai/gpt-6-luna");
+    assert.equal(body.reasoning.effort, "none");
+    assert.equal(body.temperature, undefined);
+    assert.equal(body.tools, undefined);
     return Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"resumo":"ok"}' } }] });
   }) as Fetcher;
-  assert.equal(await new GroqSummarizer(env, fetcher).complete("", [], new Date()), "ok");
-  assert.deepEqual(keys, ["Bearer one", "Bearer two"]);
-  for (const status of [401, 403, 400]) {
+  assert.equal(await new OpenRouterSummarizer(env, fetcher).complete("", [], new Date()), "ok");
+  assert.deepEqual(keys, ["Bearer secret", "Bearer secret"]);
+  for (const status of [401, 402, 403, 404, 400]) {
     let calls = 0;
     const rejected = (async () => { calls++; return new Response("segredo", { status }); }) as Fetcher;
-    await assert.rejects(new GroqSummarizer(env, rejected).complete("", [], new Date()));
+    await assert.rejects(new OpenRouterSummarizer(env, rejected).complete("", [], new Date()));
     assert.equal(calls, 1);
   }
   const truncated = (async () => Response.json({ choices: [{ finish_reason: "length", message: { content: '{"resumo":"ok"}' } }] })) as Fetcher;
-  await assert.rejects(new GroqSummarizer(env, truncated).complete("", [], new Date()));
+  await assert.rejects(new OpenRouterSummarizer(env, truncated).complete("", [], new Date()));
 });
 
 test("Qdrant usa UUID estável e mantém namespace do usuário", async () => {
   const requests: { url: string; init?: RequestInit }[] = [];
   const fetcher = (async (url, init) => {
     requests.push({ url: String(url), init });
-    if (String(url).endsWith("/collections/memoria_resumos")) return Response.json({ result: { config: { params: { vectors: { dense: { size: 1024, distance: "Cosine" } } } } } });
-    if (String(url).includes("embeddings")) return Response.json({ data: [{ embedding: Array(1024).fill(0.1) }] });
+    if (String(url).endsWith("/collections/memoria_resumos_openai_te3s_v1")) return Response.json({ result: { config: { params: { vectors: { dense: { size: 1536, distance: "Cosine" } } } } } });
+    if (String(url).includes("embeddings")) return Response.json({ data: [{ embedding: Array(1536).fill(0.1) }] });
     return Response.json({ status: "ok", result: { status: "completed" } });
   }) as Fetcher;
   const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", id_user: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
@@ -63,13 +67,13 @@ test("Qdrant usa UUID estável e mantém namespace do usuário", async () => {
   const point = JSON.parse(requests[2].init!.body as string).points[0];
   assert.equal(point.id, doc._id);
   assert.equal(point.payload.id_user, "owner");
-  assert.equal(point.payload.modelo_embedding, "mistral-embed");
-  assert.equal(point.vector.dense.length, 1024);
+  assert.equal(point.payload.modelo_embedding, "openai/text-embedding-3-small");
+  assert.equal(point.vector.dense.length, 1536);
 });
 
 test("Qdrant rejeita embeddings inválidos e coleção incompatível", async () => {
   const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", id_user: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
-  for (const dimension of [384, 1024]) {
+  for (const dimension of [384, 1536]) {
     const fetcher = (async (url) => String(url).includes("embeddings")
       ? Response.json({ data: [{ embedding: [0] }] })
       : Response.json({ result: { config: { params: { vectors: { size: dimension, distance: "Cosine" } } } } })) as Fetcher;
@@ -120,4 +124,47 @@ test("não há endpoint público para gerar resumos ou encerrar", async () => {
   assert.equal((await worker.fetch(new Request("https://example.test/health"))).status, 200);
   assert.equal((await worker.fetch(new Request("https://example.test/run", { method: "POST" }))).status, 404);
   assert.equal((await worker.fetch(new Request("https://example.test/encerrar"))).status, 404);
+});
+import { PrivacyMap, redactForEmbedding } from "../src/privacy.ts";
+import { memoryCollection, config } from "../src/config.ts";
+
+test("pseudonimizacao para vetores usa os mesmos marcadores da API", () => {
+  const value = "CPF 123.456.789-01; contato ana@privado.example; NR-12 em 20/10/2026 às 10:30";
+  assert.equal(redactForEmbedding(value), "CPF [CPF]; contato [EMAIL]; NR-12 em 20/10/2026 às 10:30");
+  const privacy = new PrivacyMap();
+  assert.equal(privacy.restore(privacy.mask(value)), value);
+  assert.throws(() => privacy.restore("[ASTRO_PII_012345abcdef_EMAIL_1]"));
+});
+
+test("colecao antiga e rejeitada antes de qualquer embedding ou gravacao", async () => {
+  let calls = 0;
+  const legacy = { ...env, QDRANT_MEMORY_COLLECTION: "memoria_resumos" };
+  assert.throws(() => memoryCollection(legacy));
+  assert.throws(() => config({ ...legacy, ENABLED: "true" }));
+  await assert.rejects(new QdrantVectors(legacy, (async () => { calls++; return Response.json({}); }) as Fetcher)
+    .upsert({ _id: "9021d386-41e5-4746-9b83-eee90a3148c2" } as Session, "Resumo"));
+  assert.equal(calls, 0);
+});
+
+test("resumo usa tokens privados no provedor e restaura dados somente no backend", async () => {
+  const fetcher = (async (_url, init) => {
+    assert.equal(String(_url), "https://openrouter.ai/api/v1/chat/completions");
+    const payload = JSON.parse(String(init?.body));
+    assert.ok(!JSON.stringify(payload).includes("ana@privado.example"));
+    const input = JSON.parse(payload.messages[1].content);
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ resumo: input.mensagens[0].content }) } }] });
+  }) as Fetcher;
+  assert.equal(await new OpenRouterSummarizer(env, fetcher).complete("", [{ role: "human", content: "Contato ana@privado.example" }], new Date()), "Contato ana@privado.example");
+});
+
+test("invalidos nao sao persistidos e truncamento permite somente uma nova tentativa", async () => {
+  let calls = 0;
+  const fetcher = (async (_url, init) => {
+    calls++;
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.max_tokens, calls === 1 ? 4096 : 8192);
+    return Response.json({ choices: [{ finish_reason: calls === 1 ? "length" : "stop", message: { content: calls === 1 ? "" : '{"resumo":"ok"}' } }] });
+  }) as Fetcher;
+  assert.equal(await new OpenRouterSummarizer(env, fetcher).complete("", [], new Date()), "ok");
+  assert.equal(calls, 2);
 });

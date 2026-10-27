@@ -5,7 +5,7 @@ import { safeCode } from "./http.ts";
 import { runJob } from "./job.ts";
 import type { RunStats } from "./job.ts";
 import { MongoRepository } from "./repository.ts";
-import { GroqSummarizer } from "./summarizer.ts";
+import { OpenRouterSummarizer } from "./summarizer.ts";
 import { QdrantVectors } from "./vectors.ts";
 import { exportTelemetry } from "./telemetry.ts";
 
@@ -21,7 +21,7 @@ export async function hourlyRun(env: Env) {
     if (!options.enabled) return;
     status = "completed";
     repo = await observe("connect", "mongodb", () => MongoRepository.connect(env));
-    stats = await runJob(repo, new GroqSummarizer(env), new QdrantVectors(env), options.batchSize, new Date(), Date.now, runId);
+    stats = await runJob(repo, new OpenRouterSummarizer(env), new QdrantVectors(env), options.batchSize, new Date(), Date.now, runId);
     if (stats.failed > 0 || Object.keys(stats.errors).length) status = "partial";
   } catch (error) {
     status = "failed";
