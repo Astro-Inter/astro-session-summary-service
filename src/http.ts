@@ -1,4 +1,5 @@
 import { JobError } from "./config.ts";
+import { ObservedFailure } from "./diagnostics.ts";
 
 export type Fetcher = typeof fetch;
 export async function requestJson(url: string, init: RequestInit, code: string,
@@ -35,5 +36,6 @@ export async function requestJson(url: string, init: RequestInit, code: string,
 }
 
 export function safeCode(error: unknown): string {
+  if (error instanceof ObservedFailure) return safeCode(error.cause);
   return error instanceof JobError && /^[a-z0-9_]{1,80}$/.test(error.code) ? error.code : "internal_error";
 }

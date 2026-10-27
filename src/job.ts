@@ -1,3 +1,4 @@
+import { diagnostic, observe } from "./diagnostics.ts";
 import { JobError, RUN_BUDGET_MS } from "./config.ts";
 import { safeCode } from "./http.ts";
 import { sourceDate, summaryCurrent } from "./repository.ts";
@@ -10,17 +11,17 @@ export interface RunStats { selected: number; completed: number; failed: number;
   deferred: number; llmCalls: number; errors: Record<string, number>; durationMs: number }
 
 export async function runJob(repo: Repository, ai: Summarizer, vectors: Vectors,
-  limit: number, now = new Date(), clock: () => number = Date.now): Promise<RunStats> {
+  limit: number, now = new Date(), clock: () => number = Date.now, runId?: string): Promise<RunStats> {
   const start = clock();
   const stats: RunStats = { selected: 0, completed: 0, failed: 0, stale: 0,
     deferred: 0, llmCalls: 0, errors: {}, durationMs: 0 };
-  const ids = await repo.candidates(now, limit);
+  const ids = await observe("select_candidates", "mongodb", () => repo.candidates(now, limit));
   stats.selected = ids.length;
   for (const id of ids) {
     if (clock() - start >= RUN_BUDGET_MS - 30000) { stats.deferred++; continue; }
     let doc: Session | null = null;
     try {
-      doc = await repo.claim(id, new Date(clock()));
+      doc = await observe("claim_session", "mongodb", () => repo.claim(id, new Date(clock())));
       if (!doc) { stats.stale++; continue; }
       let summary = doc.resumo ?? "";
       if (!summaryCurrent(doc)) {
@@ -37,18 +38,20 @@ export async function runJob(repo: Repository, ai: Summarizer, vectors: Vectors,
           if (!await repo.current(doc)) throw new JobError("snapshot_changed");
           const chunk = parts.slice(offset, offset + 2);
           stats.llmCalls++;
-          summary = await ai.complete(summary, chunk, doc.iniciada_em);
+          summary = await observe("summarize_chunk", "llm", () => ai.complete(summary, chunk, doc!.iniciada_em));
           offset += chunk.length;
           if (!await repo.checkpoint(doc, summary, offset)) throw new JobError("snapshot_changed");
         }
         if (!await repo.save(doc, summary)) throw new JobError("snapshot_changed");
       }
       if (!await repo.current(doc)) throw new JobError("snapshot_changed");
-      await vectors.upsert(doc, summary);
+      await observe("upsert_vectors", "qdrant", () => vectors.upsert(doc!, summary));
       if (!await repo.indexed(doc)) throw new JobError("snapshot_changed");
       stats.completed++;
     } catch (error) {
       const code = safeCode(error);
+      const deferred = code === "snapshot_changed" || code === "run_budget_exhausted";
+      console[deferred ? "log" : "error"](JSON.stringify({ event: deferred ? "summary_item_deferred" : "summary_item_failed", run_id: runId, ...diagnostic(error) }));
       if (code === "snapshot_changed") stats.stale++;
       else if (code === "run_budget_exhausted") stats.deferred++;
       else { stats.failed++; stats.errors[code] = (stats.errors[code] ?? 0) + 1; }

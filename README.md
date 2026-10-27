@@ -186,3 +186,7 @@ Falha de exportação é logada localmente e nunca desfaz um resumo já salvo.
 - [Cron Triggers e UTC](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
 - [Limites de CPU](https://developers.cloudflare.com/workers/platform/limits/)
 - [Grafana OTLP e encoding](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/)
+
+## Diagnóstico operacional
+
+Consulte [os campos e limites dos novos diagnósticos](docs/observability-diagnostics.md) para investigar falhas por requisição ou execução no Grafana.

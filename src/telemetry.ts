@@ -20,7 +20,7 @@ export function otelHeaders(value: string): Record<string, string> {
 }
 
 export async function exportTelemetry(env: Env, stats: RunStats, start: number,
-  status: string, fetcher: Fetcher = fetch): Promise<void> {
+  status: string, fetcher: Fetcher = fetch, runId?: string): Promise<void> {
   // Um lote pequeno por execução horária. Nunca exporta mensagens, resumo, UID ou URI do Mongo.
   if (!env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
   try {
@@ -49,13 +49,13 @@ export async function exportTelemetry(env: Env, stats: RunStats, start: number,
       metrics: { resourceMetrics: [{ resource, scopeMetrics: [{ scope, metrics }] }] },
       traces: { resourceSpans: [{ resource, scopeSpans: [{ scope, spans: [{ traceId, spanId,
         name: "summary.hourly_run", kind: 1, startTimeUnixNano: nanos(start), endTimeUnixNano: nanos(end),
-        attributes: [attr("job.status", status)], status: { code: status === "failed" || stats.failed > 0 ? 2 : 1 },
+        attributes: [attr("job.status", status)], status: { code: status === "failed" || status === "partial" || stats.failed > 0 ? 2 : 1 },
       }] }] }] },
       logs: { resourceLogs: [{ resource, scopeLogs: [{ scope, logRecords: [{
         timeUnixNano: nanos(end), observedTimeUnixNano: nanos(end), traceId, spanId,
-        severityNumber: status === "failed" || stats.failed > 0 ? 17 : 9,
-        severityText: status === "failed" || stats.failed > 0 ? "ERROR" : "INFO",
-        body: { stringValue: JSON.stringify({ event: "summary_run", status, ...stats }) },
+        severityNumber: status === "failed" || status === "partial" || stats.failed > 0 ? 17 : 9,
+        severityText: status === "failed" || status === "partial" || stats.failed > 0 ? "ERROR" : "INFO",
+        body: { stringValue: JSON.stringify({ event: "summary_run", status, run_id: runId, ...stats }) },
       }] }] }] },
     };
     for (const [signal, body] of Object.entries(payloads)) {
