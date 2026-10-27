@@ -4,7 +4,7 @@ import { safeCode } from "./http.ts";
 import { runJob } from "./job.ts";
 import type { RunStats } from "./job.ts";
 import { MongoRepository } from "./repository.ts";
-import { GroqSummarizer } from "./summarizer.ts";
+import { OpenRouterSummarizer } from "./summarizer.ts";
 import { QdrantVectors } from "./vectors.ts";
 import { exportTelemetry } from "./telemetry.ts";
 
@@ -19,7 +19,7 @@ export async function hourlyRun(env: Env) {
     if (!options.enabled) return;
     status = "completed";
     repo = await MongoRepository.connect(env);
-    stats = await runJob(repo, new GroqSummarizer(env), new QdrantVectors(env), options.batchSize);
+    stats = await runJob(repo, new OpenRouterSummarizer(env), new QdrantVectors(env), options.batchSize);
   } catch (error) {
     status = "failed";
     stats.errors[safeCode(error)] = 1;

@@ -19,9 +19,10 @@ São selecionadas até cinco sessões por execução (ajustável entre 1 e 10).
 Não existe polling contínuo, temporizador em memória ou dependência do frontend.
 
 O Worker conecta diretamente ao MongoDB, coleção `sessoes`, com driver Node,
-TLS e `nodejs_compat`. Gera o resumo na Groq (`openai/gpt-oss-20b`), em trechos
-cronológicos, salva no Mongo e indexa no Qdrant `memoria_resumos` com
-`mistral-embed` (1024 dimensões, Cosine), compatível com a memória da API.
+TLS e `nodejs_compat`. Gera o resumo via OpenRouter (`openai/gpt-6-luna`), em trechos
+cronológicos, salva no Mongo e indexa na coleção Qdrant configurada por
+`QDRANT_MEMORY_COLLECTION` (padrão `memoria_resumos_openai_te3s_v1`) com
+`openai/text-embedding-3-small` (1536 dimensões, Cosine), alinhado à API.
 Não chama `/sessions/{id}/encerrar`, nem qualquer endpoint do chatbot.
 
 **A sessão continua ativa:** não muda `status`, `mensagens`, `acao_pendente`,
@@ -32,8 +33,10 @@ desatualizado; o Worker cria outra versão após novo período de inatividade.
 O resumo é uma síntese assistida por IA, não comprovação de execução de ferramentas
 nem documento oficial. O prompt separa relatos, propostas, pendências e resultados,
 trata mensagens como dados não confiáveis e remove padrões comuns de credenciais.
-Esse filtro não garante detectar todo dado sensível: as mensagens são enviadas
-à Groq e o resumo à Mistral/Qdrant. Use as políticas de privacidade do projeto.
+Credenciais reconhecidas são removidas e identificadores pessoais reconhecidos
+são substituídos antes do OpenRouter. O backend restaura os identificadores no
+resumo salvo; embeddings usam os mesmos marcadores genéricos da API. O filtro
+não detecta todo dado sensível. Use as políticas de privacidade do projeto.
 
 ## Segurança e recuperação
 
@@ -127,9 +130,10 @@ gera novamente. Acrescente um turno e confira que não é resumido antes de outr
    avaliar o risco se optar por acesso público com TLS e usuário restrito.
 4. Autenticar no Wrangler (`node node_modules/wrangler/bin/wrangler.js login`).
 5. Publicar desativado: `npm run deploy`.
-6. Configurar os secrets no Worker com `npm run secrets:upload`. Esse comando
-   envia somente Mongo, Groq, Mistral, Qdrant e cabeçalho OTLP de `.dev.vars`;
-   não envia as credenciais de Firebase, Postgres, R2 ou DeepInfra.
+6. Preparar os secrets com `npm run secrets:upload`. Envia somente Mongo,
+   OpenRouter, Qdrant e cabeçalho OTLP de `.dev.vars`, por stdin, para uma versão
+   não publicada (`wrangler versions secret bulk`). Revise a versão antes de
+   publicar; o comando não ativa credenciais nem publica código.
 7. Após validar em homologação, definir `ENABLED=true` em `wrangler.jsonc` e publicar.
    A agenda pertence ao disparador compartilhado; não adicione Cron neste Worker.
    Não habilite o processamento enquanto a rede e a integração na API não estiverem prontas.
@@ -149,8 +153,8 @@ Nenhum deploy ocorre automaticamente ao enviar esta branch.
 **Plano gratuito não é garantido:** Workers Free limita CPU a 10ms, mesmo em Cron;
 Mongo/TLS, JSON e telemetria podem exceder. A configuração não contrata plano pago
 nem aumenta limites de cobrança. Validar CPU na conta antes de ativar; avaliar
-Workers Paid se necessário. Groq/Mistral/Qdrant/Grafana têm suas próprias cotas e
-custos; Mistral embeddings não deve ser presumida gratuita. O bundle local não
+Workers Paid se necessário. OpenRouter/Qdrant/Grafana têm suas próprias cotas e
+custos; inferência e embeddings não devem ser presumidos gratuitos. O bundle local não
 comprova acesso à rede Atlas nem funcionamento em produção.
 
 ## Grafana / OpenTelemetry
@@ -170,7 +174,7 @@ Métricas são **gauges do último lote**, não contadores cumulativos:
 | Métrica OTLP | Uso |
 |---|---|
 | `astro.summary.sessions` | selecionadas, concluídas, falhas, obsoletas e adiadas, atributo `result` |
-| `astro.summary.llm_calls` | chamadas lógicas de resumo, sem contar tentativas de chave |
+| `astro.summary.llm_calls` | chamadas lógicas de resumo, sem contar retentativas HTTP |
 | `astro.summary.run_duration` | duração da execução em segundos |
 | `astro.summary.last_run` | timestamp da última execução para detectar Cron parado |
 
@@ -186,3 +190,38 @@ Falha de exportação é logada localmente e nunca desfaz um resumo já salvo.
 - [Cron Triggers e UTC](https://developers.cloudflare.com/workers/configuration/cron-triggers/)
 - [Limites de CPU](https://developers.cloudflare.com/workers/platform/limits/)
 - [Grafana OTLP e encoding](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/)
+
+## Migração OpenRouter e vetores
+
+Configure `OPENROUTER_API_KEY` exclusivamente como secret do backend. Não há
+chaves operacionais Groq/Mistral. O resumo exige texto: Jev não participa deste
+fluxo. A camada `src/openrouter.ts` limita cada operação a duas tentativas,
+com timeout de 30s, erros sanitizados e uso numérico em logs. Respostas de resumo
+são JSON validado; truncamento permite uma segunda tentativa com orçamento maior.
+401/402 e erros permanentes não repetem; Retry-After longo adia para o próximo lote.
+Cada trecho usa uma chamada de texto e cada resumo final uma de embedding,
+além das retentativas limitadas. Não há classificador adicional.
+
+O Worker valida coleção existente, dimensão e distância antes de gerar o vetor.
+Não cria/apaga coleções e recusa o nome legado, mesmo com dimensão compatível.
+Antes de habilitá-lo, execute o plano de migração de vetores de `astro-ai-api`:
+estimar volume/custo e conferir fontes; criar coleção nova; reindexar resumos
+canônicos; validar exemplos e isolamento; apontar API e Worker para a mesma
+coleção. `resumo_indexado=true` de registros legados não força reindexação: a
+migração dedicada deve cobrir esses registros. Não altere flags em massa.
+Preserve coleção e dados antigos e guarde a configuração anterior para retorno.
+O retorno ao índice antigo exige também o código/modelo legado; não use embeddings
+OpenAI para consultar vetores Mistral. O Worker continua `ENABLED=false` até essa
+validação e autorização de publicação/ativação.
+
+Referências: [Chat](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request),
+[embeddings](https://openrouter.ai/docs/api/api-reference/embeddings/create-embeddings),
+[Luna](https://openrouter.ai/openai/gpt-6-luna),
+[embedding](https://openrouter.ai/openai/text-embedding-3-small),
+[versions e secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+
+Validação desta migração (27/10/2026): typecheck, 27 testes com mocks e bundle
+`--dry-run` passaram. Duas chamadas sintéticas reais confirmaram resumo JSON e
+embedding de 1536 posições; custo informado: US$ 0,00005256. Nenhuma sessão ou
+coleção real foi alterada. E2E com bancos de homologação e ativação dependem da
+migração vetorial coordenada.

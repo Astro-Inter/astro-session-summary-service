@@ -8,7 +8,9 @@ export async function requestJson(url: string, init: RequestInit, code: string,
     const response = await fetcher(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(timeout) });
     if (!response.ok) {
       await response.body?.cancel();
-      throw new JobError(`${code}_http_${response.status}`);
+      const raw = Number(response.headers.get("retry-after") ?? "1");
+      const delay = Number.isFinite(raw) ? Math.min(60, Math.max(1, Math.ceil(raw))) : 1;
+      throw new JobError(`${code}_http_${response.status}`, delay);
     }
     const reader = response.body?.getReader();
     if (!reader) throw new JobError(`${code}_invalid_response`);
