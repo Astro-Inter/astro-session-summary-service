@@ -6,9 +6,10 @@ const source = process.argv[2];
 if (!source) { console.error("Uso: npm run configure:local -- CAMINHO_DA_API/.env"); process.exit(1); }
 const suppliedHeaders = process.env.SUMMARY_OTEL_HEADERS;
 process.loadEnvFile(resolve(source));
-const names = ["MONGODB_URI", "MONGODB_DATABASE", "GROQ_API_KEY", "MISTRAL_API_KEY",
+const names = ["MONGODB_URI", "MONGODB_DATABASE", "OPENROUTER_API_KEY",
   "QDRANT_URL", "QDRANT_API_KEY", "OTEL_EXPORTER_OTLP_HEADERS"];
 const values = { ENABLED: "false", APP_ENV: "development", BATCH_SIZE: "5",
+  QDRANT_MEMORY_COLLECTION: "memoria_resumos_openai_te3s_v1",
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://otlp-gateway-prod-sa-east-1.grafana.net/otlp" };
 for (const name of names) values[name] = process.env[name] ?? "";
 if (suppliedHeaders) values.OTEL_EXPORTER_OTLP_HEADERS = suppliedHeaders;

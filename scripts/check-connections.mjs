@@ -15,7 +15,7 @@ finally { await client.close().catch(() => {}); }
 try {
   const url = new URL(process.env.QDRANT_URL);
   if (url.protocol !== "https:" || url.username || url.password) throw new Error();
-  const response = await fetch(url.href.replace(/\/$/, "") + "/collections/memoria_resumos", {
+  const response = await fetch(url.href.replace(/\/$/, "") + "/collections/" + encodeURIComponent(process.env.QDRANT_MEMORY_COLLECTION || "memoria_resumos_openai_te3s_v1"), {
     headers: process.env.QDRANT_API_KEY ? { "api-key": process.env.QDRANT_API_KEY } : {},
     signal: AbortSignal.timeout(5000), redirect: "error",
   });

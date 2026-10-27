@@ -4,9 +4,11 @@ BATCH_SIZE=5
 APP_ENV=development
 MONGODB_URI=
 MONGODB_DATABASE=
-GROQ_API_KEY=
-MISTRAL_API_KEY=
+OPENROUTER_API_KEY=
 QDRANT_URL=
 QDRANT_API_KEY=
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-sa-east-1.grafana.net/otlp
 OTEL_EXPORTER_OTLP_HEADERS=
+
+# Ativar somente depois da migracao e validacao desta colecao na API.
+QDRANT_MEMORY_COLLECTION=memoria_resumos_openai_te3s_v1
