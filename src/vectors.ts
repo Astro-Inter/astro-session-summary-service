@@ -48,7 +48,7 @@ export class QdrantVectors implements Vectors {
     const result = await requestJson(this.url(`/collections/${collection}/points?wait=true`), {
       method: "PUT", headers: this.headers(), body: JSON.stringify({ points: [{
         id: doc._id, vector: this.vectorName !== null ? { [this.vectorName]: vector } : vector,
-        payload: { id_user: doc.id_user, session_id: doc._id, resumo: summary,
+        payload: { id_user: doc.usuario_id, session_id: doc._id, resumo: summary,
           modelo_embedding: "openai/text-embedding-3-small", iniciada_em: doc.iniciada_em.toISOString(),
           resumo_mensagens: doc.mensagens.length, resumo_ultima_mensagem_em: sourceDate(doc).toISOString() },
       }] }),
