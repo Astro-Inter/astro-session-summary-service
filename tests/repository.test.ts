@@ -6,24 +6,24 @@ import { eligibility, snapshotFilter, summaryCurrent, sourceDate } from "../src/
 import type { Session } from "../src/repository.ts";
 
 const now = new Date("2026-10-10T19:00:00Z");
-const doc: Session = { _id: "id", id_user: "owner", status: "ativa", iniciada_em: now,
+const doc: Session = { _id: "id", usuario_id: "owner", status: "ativa", iniciada_em: now,
   atualizada_em: now, ultima_mensagem_em: new Date(now.getTime() - INACTIVITY_MS),
-  mensagens: [{ role: "human", content: "Oi" }] };
+  mensagens: [{ papel: "human", conteudo: "Oi" }] };
 
 test("elegibilidade usa 24 horas completas, estados permitidos e leases independentes", () => {
   const query = JSON.stringify(eligibility(now));
   assert.ok(query.includes("2026-10-09T19:00:00.000Z"));
   assert.ok(query.includes('"$lte"'));
-  assert.ok(query.includes("resumo_job_ate"));
-  assert.ok(query.includes("lock_ate"));
-  assert.ok(query.includes("resumo_job_proxima_tentativa"));
+  assert.ok(query.includes("resumo_tarefa_ate"));
+  assert.ok(query.includes("reserva_ate"));
+  assert.ok(query.includes("resumo_tarefa_proxima_tentativa"));
   assert.deepEqual(eligibility(now).status, { $in: ["ativa", "encerrada"] });
 });
 
 test("snapshot revalida dono, data, quantidade e token", () => {
   const query = snapshotFilter(doc, "token", now);
-  assert.equal(query.id_user, "owner");
-  assert.equal(query.resumo_job_token, "token");
+  assert.equal(query.usuario_id, "owner");
+  assert.equal(query.resumo_tarefa_token, "token");
   assert.ok(JSON.stringify(query).includes('"$size"'));
   assert.ok(JSON.stringify(query).includes('"$eq"'));
 });

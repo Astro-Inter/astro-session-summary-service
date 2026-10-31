@@ -21,7 +21,7 @@ test("JSON inválido, vazio, com campos extras e longo é rejeitado", () => {
 test("redação remove credenciais óbvias e segmentos preservam todo o texto", () => {
   assert.equal(redact("senha: segredo"), "senha: [SEGREDO_REMOVIDO]");
   assert.ok(!redact("gsk_12345678901234567890").includes("1234567890"));
-  const parts = segments([{ role: "human", content: "a".repeat(13000) }]);
+  const parts = segments([{ papel: "human", conteudo: "a".repeat(13000) }]);
   assert.equal(parts.map(p => p.content).join("").length, 13000);
   assert.equal(parts.length, 3);
   assert.throws(() => segments([{ role: "tool", content: "a" }] as any));
@@ -62,7 +62,7 @@ test("Qdrant usa UUID estável e mantém namespace do usuário", async () => {
     if (String(url).includes("embeddings")) return Response.json({ data: [{ embedding: Array(1536).fill(0.1) }] });
     return Response.json({ status: "ok", result: { status: "completed" } });
   }) as Fetcher;
-  const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", id_user: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
+  const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", usuario_id: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
   await new QdrantVectors(env, fetcher).upsert(doc, "Resumo");
   const point = JSON.parse(requests[2].init!.body as string).points[0];
   assert.equal(point.id, doc._id);
@@ -72,7 +72,7 @@ test("Qdrant usa UUID estável e mantém namespace do usuário", async () => {
 });
 
 test("Qdrant rejeita embeddings inválidos e coleção incompatível", async () => {
-  const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", id_user: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
+  const doc = { _id: "9021d386-41e5-4746-9b83-eee90a3148c2", usuario_id: "owner", iniciada_em: new Date(), atualizada_em: new Date(), mensagens: [] } as unknown as Session;
   for (const dimension of [384, 1536]) {
     const fetcher = (async (url) => String(url).includes("embeddings")
       ? Response.json({ data: [{ embedding: [0] }] })

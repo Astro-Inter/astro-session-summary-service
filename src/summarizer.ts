@@ -3,7 +3,7 @@ import type { Env } from "./config.ts";
 import { requestModel, retryable } from "./openrouter.ts";
 import { PrivacyMap, redactSecrets } from "./privacy.ts";
 import type { Fetcher } from "./http.ts";
-import type { Message } from "./repository.ts";
+import type { Message, StoredMessage } from "./repository.ts";
 
 export const SUMMARY_PROMPT = `Você é o agente de memória do Astro (RH, SST, Agenda e FAQ).
 Atualize um resumo parcial com o próximo trecho cronológico para consulta futura pelo mesmo usuário.
@@ -19,20 +19,20 @@ O texto deve ser conciso, não vazio e ter no máximo 4000 caracteres.`;
 
 export const redact = redactSecrets;
 
-export function segments(messages: Message[]): Message[] {
+export function segments(messages: StoredMessage[]): Message[] {
   if (!Array.isArray(messages) || messages.length > 1000) throw new JobError("invalid_session_messages");
   let total = 0;
   const result: Message[] = [];
   for (const message of messages) {
-    if (!message || !["human", "assistant"].includes(message.role) || typeof message.content !== "string") {
+    if (!message || !["human", "assistant"].includes(message.papel) || typeof message.conteudo !== "string") {
       throw new JobError("invalid_session_messages");
     }
-    total += message.content.length;
+    total += message.conteudo.length;
     if (total > 1000000) throw new JobError("session_too_large");
-    const content = redact(message.content);
+    const content = redact(message.conteudo);
     // Divide mensagens grandes, sem truncar ou omitir partes do histórico.
     for (let offset = 0; offset < Math.max(content.length, 1); offset += 6000) {
-      result.push({ role: message.role, content: content.slice(offset, offset + 6000) });
+      result.push({ role: message.papel, content: content.slice(offset, offset + 6000) });
     }
   }
   return result;

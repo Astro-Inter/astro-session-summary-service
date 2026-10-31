@@ -3,16 +3,17 @@ import { COLLECTION, INACTIVITY_MS, LEASE_MS, JobError } from "./config.ts";
 import type { Env } from "./config.ts";
 
 export interface Message { role: "human" | "assistant"; content: string }
+export interface StoredMessage { papel: "human" | "assistant"; conteudo: string }
 export interface Session {
-  _id: string; id_user: string; status: string; iniciada_em: Date;
-  atualizada_em: Date; ultima_mensagem_em?: Date; mensagens: Message[];
+  _id: string; usuario_id: string; status: string; iniciada_em: Date;
+  atualizada_em: Date; ultima_mensagem_em?: Date; mensagens: StoredMessage[];
   resumo?: string; resumo_indexado?: boolean; resumo_mensagens?: number;
   resumo_ultima_mensagem_em?: Date;
   resumo_automatico_parcial?: string; resumo_automatico_ate?: number;
   resumo_automatico_base_em?: Date; resumo_automatico_base_total?: number;
-  resumo_job_token?: string; resumo_job_ate?: Date; resumo_job_tentativas?: number;
-  resumo_job_proxima_tentativa?: Date; resumo_job_erro?: string;
-  lock_ate?: Date;
+  resumo_tarefa_token?: string; resumo_tarefa_ate?: Date; resumo_tarefa_tentativas?: number;
+  resumo_tarefa_proxima_tentativa?: Date; resumo_tarefa_erro?: string;
+  reserva_ate?: Date;
 }
 
 const lastMessage = { $ifNull: ["$ultima_mensagem_em", "$atualizada_em"] };
@@ -30,8 +31,8 @@ export function eligibility(now: Date): Filter<Session> {
         { ultima_mensagem_em: { $lte: new Date(now.getTime() - INACTIVITY_MS) } },
         { ultima_mensagem_em: { $exists: false }, atualizada_em: { $lte: new Date(now.getTime() - INACTIVITY_MS) } },
       ] },
-      leaseAvailable("lock_ate", now), leaseAvailable("resumo_job_ate", now),
-      leaseAvailable("resumo_job_proxima_tentativa", now),
+      leaseAvailable("reserva_ate", now), leaseAvailable("resumo_tarefa_ate", now),
+      leaseAvailable("resumo_tarefa_proxima_tentativa", now),
       { $expr: { $or: [
         { $ne: [{ $ifNull: ["$resumo_mensagens", -1] }, totalMessages] },
         { $ne: [{ $ifNull: ["$resumo_ultima_mensagem_em", null] }, lastMessage] },
@@ -49,13 +50,13 @@ export function sourceDate(doc: Session): Date {
 
 export function snapshotFilter(doc: Session, token: string, now: Date): Filter<Session> {
   return {
-    _id: doc._id, id_user: doc.id_user, status: { $in: ["ativa", "encerrada"] },
-    resumo_job_token: token, resumo_job_ate: { $gt: now },
+    _id: doc._id, usuario_id: doc.usuario_id, status: { $in: ["ativa", "encerrada"] },
+    resumo_tarefa_token: token, resumo_tarefa_ate: { $gt: now },
     $expr: { $and: [
       { $eq: [lastMessage, sourceDate(doc)] },
       { $eq: [totalMessages, doc.mensagens.length] },
     ] },
-    ...leaseAvailable("lock_ate", now),
+    ...leaseAvailable("reserva_ate", now),
   } as Filter<Session>;
 }
 
@@ -109,14 +110,14 @@ export class MongoRepository implements Repository {
 
   async claim(id: string, now: Date): Promise<Session | null> {
     return this.collection.findOneAndUpdate({ _id: id, ...eligibility(now) }, {
-      $set: { resumo_job_token: crypto.randomUUID(), resumo_job_ate: new Date(now.getTime() + LEASE_MS) },
+      $set: { resumo_tarefa_token: crypto.randomUUID(), resumo_tarefa_ate: new Date(now.getTime() + LEASE_MS) },
     }, { returnDocument: "after" });
   }
 
   private async patch(doc: Session, fields: Record<string, unknown>): Promise<boolean> {
     const now = new Date();
-    const result = await this.collection.updateOne(snapshotFilter(doc, doc.resumo_job_token!, now), {
-      $set: { ...fields, resumo_job_ate: new Date(now.getTime() + LEASE_MS) },
+    const result = await this.collection.updateOne(snapshotFilter(doc, doc.resumo_tarefa_token!, now), {
+      $set: { ...fields, resumo_tarefa_ate: new Date(now.getTime() + LEASE_MS) },
     });
     return result.matchedCount === 1;
   }
@@ -132,25 +133,25 @@ export class MongoRepository implements Repository {
   }
 
   async current(doc: Session) {
-    return !!await this.collection.findOne(snapshotFilter(doc, doc.resumo_job_token!, new Date()),
+    return !!await this.collection.findOne(snapshotFilter(doc, doc.resumo_tarefa_token!, new Date()),
       { projection: { _id: 1 } });
   }
 
   async indexed(doc: Session) {
-    return this.patch(doc, { resumo_indexado: true, resumo_job_tentativas: 0,
-      resumo_job_proxima_tentativa: new Date(0), resumo_job_erro: "",
+    return this.patch(doc, { resumo_indexado: true, resumo_tarefa_tentativas: 0,
+      resumo_tarefa_proxima_tentativa: new Date(0), resumo_tarefa_erro: "",
       resumo_automatico_parcial: "", resumo_automatico_ate: 0 });
   }
 
   async fail(doc: Session, code: string) {
-    const attempts = Math.min((doc.resumo_job_tentativas ?? 0) + 1, 10);
-    await this.patch(doc, { resumo_job_tentativas: attempts, resumo_job_erro: code,
-      resumo_job_proxima_tentativa: new Date(Date.now() + Math.min(2 ** attempts * 60000, 6 * 3600000)) });
+    const attempts = Math.min((doc.resumo_tarefa_tentativas ?? 0) + 1, 10);
+    await this.patch(doc, { resumo_tarefa_tentativas: attempts, resumo_tarefa_erro: code,
+      resumo_tarefa_proxima_tentativa: new Date(Date.now() + Math.min(2 ** attempts * 60000, 6 * 3600000)) });
   }
 
   async release(doc: Session) {
-    await this.collection.updateOne({ _id: doc._id, id_user: doc.id_user, resumo_job_token: doc.resumo_job_token },
-      { $unset: { resumo_job_token: "", resumo_job_ate: "" } });
+    await this.collection.updateOne({ _id: doc._id, usuario_id: doc.usuario_id, resumo_tarefa_token: doc.resumo_tarefa_token },
+      { $unset: { resumo_tarefa_token: "", resumo_tarefa_ate: "" } });
   }
 
   async close() { await this.client.close(); }
