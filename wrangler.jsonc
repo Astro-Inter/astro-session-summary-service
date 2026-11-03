@@ -7,6 +7,7 @@
   "workers_dev": false,
   "preview_urls": false,
   "triggers": { "crons": [] },
+  "services": [{ "binding": "CLEANUP", "service": "astro-session-cleanup-service", "entrypoint": "CleanupJob" }],
   "vars": {
     "ENABLED": "false",
     "BATCH_SIZE": "5",

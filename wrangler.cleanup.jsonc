@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "astro-session-cleanup-service",
+  "main": "src/cleanup-entrypoint.ts",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": [] },
+  "vars": { "CLEANUP_ENABLED": "false", "CLEANUP_BATCH_SIZE": "100" },
+  "observability": { "enabled": true }
+}
