@@ -11,6 +11,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts && npm run test:diagnostics",
     "dev": "node node_modules/wrangler/bin/wrangler.js dev --test-scheduled",
     "build": "node node_modules/wrangler/bin/wrangler.js deploy --dry-run --outdir dist",
+    "build:cleanup": "node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.cleanup.jsonc --dry-run --outdir dist/cleanup",
+    "deploy:cleanup": "node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.cleanup.jsonc",
     "deploy": "node node_modules/wrangler/bin/wrangler.js deploy",
     "configure:local": "node scripts/import-env.mjs",
     "secrets:upload": "node scripts/upload-secrets.mjs",

@@ -1,4 +1,5 @@
 export interface Env {
+  CLEANUP?: { run(): Promise<unknown> };
   MONGODB_URI: string;
   MONGODB_DATABASE: string;
   OPENROUTER_API_KEY: string;
